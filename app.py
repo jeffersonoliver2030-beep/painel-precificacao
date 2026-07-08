@@ -1,9 +1,16 @@
 import re
 import json
 import urllib.request
+import os
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from openai import OpenAI
+
+# 🔐 FORÇA O DESLIGAMENTO DE PROXIES DO SISTEMA DA RENDER PARA A OPENAI NÃO QUEBRAR
+os.environ["HTTP_PROXY"] = ""
+os.environ["HTTPS_PROXY"] = ""
+os.environ["http_proxy"] = ""
+os.environ["https_proxy"] = ""
 
 app = Flask(__name__)
 CORS(app)
@@ -111,7 +118,7 @@ def analisar_alvo():
         'valor_atual': f"R$ {seu_preco:.2f}",
         'valor_concorrente': f"R$ {preco_concorrente:.2f}",
         'score': score,
-        'detalhes': detalhes_final
+        'detalhes': details_final if 'details_final' in locals() else detalhes_final
     })
 
 @app.route('/perguntar-ia', methods=['POST'])
@@ -129,7 +136,5 @@ def perguntar_ia():
         return jsonify({'resposta': "Motor de IA OpenAI totalmente operacional."})
 
 if __name__ == '__main__':
-    import os
-    # Pega a porta do servidor online automaticamente ou usa a 5000 local
     porta = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=porta, debug=True)
