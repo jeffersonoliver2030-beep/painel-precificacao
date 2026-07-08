@@ -2,22 +2,25 @@ import re
 import json
 import urllib.request
 import os
+import httpx  # Importa a biblioteca de requisições usada pela OpenAI
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from openai import OpenAI
-
-# 🔐 FORÇA O DESLIGAMENTO DE PROXIES DO SISTEMA DA RENDER PARA A OPENAI NÃO QUEBRAR
-os.environ["HTTP_PROXY"] = ""
-os.environ["HTTPS_PROXY"] = ""
-os.environ["http_proxy"] = ""
-os.environ["https_proxy"] = ""
 
 app = Flask(__name__)
 CORS(app)
 
 # SUA CHAVE DA OPENAI CONFIGURADA
 API_KEY_OPENAI = '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' 
-cliente_openai = OpenAI(api_key=API_KEY_OPENAI)
+
+# 🔐 CRIA UM CLIENTE ISOLADO QUE IGNORA OS PROXIES DO SERVIDOR (CORREÇÃO PARA PYTHON 3.14)
+cliente_http_limpo = httpx.Client(trust_env=False)
+
+# Passa o cliente isolado diretamente para a OpenAI
+cliente_openai = OpenAI(
+    api_key=API_KEY_OPENAI,
+    http_client=cliente_http_limpo
+)
 
 def minerar_via_proxy_reverso(url):
     """
@@ -66,7 +69,7 @@ def extrair_dados_com_gpt(url, nome_manual=None):
             temperature=0.1
         )
         
-        resposta_texto = resposta.choices[0].message.content.strip()
+        resposta_texto = response_text = resposta.choices[0].message.content.strip()
         resposta_texto = re.sub(r'```json|```', '', resposta_texto).strip()
         
         dados_produto = json.loads(resposta_texto)
@@ -118,7 +121,7 @@ def analisar_alvo():
         'valor_atual': f"R$ {seu_preco:.2f}",
         'valor_concorrente': f"R$ {preco_concorrente:.2f}",
         'score': score,
-        'detalhes': details_final if 'details_final' in locals() else detalhes_final
+        'detalhes': detalhes_final
     })
 
 @app.route('/perguntar-ia', methods=['POST'])
