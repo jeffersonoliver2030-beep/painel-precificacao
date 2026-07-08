@@ -1,5 +1,6 @@
 import os
 import re
+import json
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import requests
@@ -9,12 +10,11 @@ from openai import OpenAI
 app = Flask(__name__)
 CORS(app)
 
-# Inicializa o cliente da OpenAI buscando a chave das variáveis de ambiente
-# (Você vai cadastrar a OPENAI_API_KEY lá na Render)
+# Inicializa o cliente da OpenAI buscando a chave salva na Render
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
 def limpar_html_para_ia(html_puro):
-    """Remove excessos do HTML para economizar tokens e dinheiro nos seus testes"""
+    """Remove excessos do HTML para economizar tokens nos seus testes"""
     soup = BeautifulSoup(html_puro, 'html.parser')
     for elemento in soup(["script", "style", "nav", "footer", "iframe", "header"]):
         elemento.decompose()
@@ -46,7 +46,7 @@ def analisar_alvo():
                 "nome": nome_opcional or "Erro de Acesso",
                 "detalhes": f"O site bloqueou o acesso direto do robô (Código: {resposta_site.status_code}).",
                 "valor_atual": seu_preco,
-                "valor_concorrente": "Não localizado"
+                "valor_conconrrente": "Não localizado"
             })
 
         # 2. Limpa o conteúdo
@@ -81,8 +81,6 @@ def analisar_alvo():
 
         # 4. Trata o retorno do ChatGPT
         texto_json = resposta_ia.choices[0].message.content.strip()
-        
-        import json
         dados_ia = json.loads(texto_json)
 
         preco_concorrente = dados_ia.get("preco_alvo", 0)
@@ -104,9 +102,12 @@ def analisar_alvo():
             "nome": nome_produto,
             "detalhes": detalhes,
             "valor_atual": v_seu,
-            "valor_concorrente": v_concorrente
+            "valor_concorrente": v_conc
         })
 
     except Exception as e:
         print(f"Erro: {str(e)}")
         return jsonify({"erro": True, "mensagem": f"Erro interno: {str(e)}"}), 500
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
