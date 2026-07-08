@@ -1,143 +1,112 @@
-import re
-import json
-import urllib.request
 import os
-import httpx  # Importa a biblioteca de requisições usada pela OpenAI
+import re
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+import requests
+from bs4 import BeautifulSoup
 from openai import OpenAI
 
 app = Flask(__name__)
 CORS(app)
 
-# SUA CHAVE DA OPENAI CONFIGURADA
-API_KEY_OPENAI = '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' 
+# Inicializa o cliente da OpenAI buscando a chave das variáveis de ambiente
+# (Você vai cadastrar a OPENAI_API_KEY lá na Render)
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-# 🔐 CRIA UM CLIENTE ISOLADO QUE IGNORA OS PROXIES DO SERVIDOR (CORREÇÃO PARA PYTHON 3.14)
-cliente_http_limpo = httpx.Client(trust_env=False)
-
-# Passa o cliente isolado diretamente para a OpenAI
-cliente_openai = OpenAI(
-    api_key=API_KEY_OPENAI,
-    http_client=cliente_http_limpo
-)
-
-def minerar_via_proxy_reverso(url):
-    """
-    Consome o conteúdo através de um leitor de texto público 
-    na nuvem para burlar o firewall dos e-commerces.
-    """
-    try:
-        url_proxy = f"https://r.jina.ai/{url}"
-        print(f"[EXTRATOR] Acessando via gateway de nuvem: {url_proxy}")
-        
-        req = urllib.request.Request(
-            url_proxy,
-            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'}
-        )
-        
-        with urllib.request.urlopen(req, timeout=15) as resposta:
-            texto_extraido = resposta.read().decode('utf-8', errors='ignore')
-            if len(texto_extraido) > 200:
-                return texto_extraido[:25000]
-    except Exception as e:
-        print(f"[PROXY FALHOU] Erro na gateway: {e}")
-    return None
-
-def extrair_dados_com_gpt(url, nome_manual=None):
-    try:
-        conteudo_site = minerar_via_proxy_reverso(url)
-        
-        if not conteudo_site:
-            conteudo_site = f"URL do Produto: {url}. (O download direto falhou. Identifique o item pelo link e estime o preço médio de mercado)."
-
-        prompt = f"""
-        Você é o motor de IA do MonitoreX.
-        Analise o texto da página web e monte um JSON estrito.
-        
-        Campos do JSON obrigatórios:
-        1. "nome": Nome comercial exato do produto (Se preenchido o nome manual "{nome_manual or ''}", use-o).
-        2. "preco": Preço principal à vista (Float puro com ponto decimal, ex: 49.90).
-        3. "detalhes": Lista curta com Material, Modelagem, Uso recomendado.
-        
-        Responda APENAS o JSON limpo, sem markdown (```json).
-        """
-        
-        resposta = cliente_openai.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": f"{prompt}\n\nDados da página:\n{conteudo_site}"}],
-            temperature=0.1
-        )
-        
-        resposta_texto = response_text = resposta.choices[0].message.content.strip()
-        resposta_texto = re.sub(r'```json|```', '', resposta_texto).strip()
-        
-        dados_produto = json.loads(resposta_texto)
-        return {
-            "nome": dados_produto.get("nome", "Produto Identificado"),
-            "preco": float(dados_produto.get("preco", 0.0)),
-            "detalhes": dados_produto.get("detalhes", "Ficha técnica extraída.")
-        }
-    except Exception as e:
-        print(f"[ERRO API] Falha: {e}")
-        return None
-
-def calcular_score_arbitragem(seu_preco, preco_concorrente):
-    if not preco_concorrente or seu_preco <= 0:
-        return 0
-    diferenca_percentual = ((seu_preco - preco_concorrente) / seu_preco) * 100
-    if diferenca_percentual > 30: return 98
-    if diferenca_percentual > 20: return 88
-    if diferenca_percentual > 10: return 70
-    if diferenca_percentual > 0: return int(50 + diferenca_percentual)
-    return 20
+def limpar_html_para_ia(html_puro):
+    """Remove excessos do HTML para economizar tokens e dinheiro nos seus testes"""
+    soup = BeautifulSoup(html_puro, 'html.parser')
+    for elemento in soup(["script", "style", "nav", "footer", "iframe", "header"]):
+        elemento.decompose()
+    return re.sub(r'\s+', ' ', soup.get_text())[:8000]
 
 @app.route('/analisar-alvo', methods=['POST'])
 def analisar_alvo():
-    dados = request.json
-    url_alvo = dados.get('url', '')
-    seu_preco_input = dados.get('seu_preco', '')
-    nome_input = dados.get('nome', '').strip()
-    
-    if not url_alvo:
-        return jsonify({'erro': 'URL inválida.'}), 400
-        
-    info_ia = extrair_dados_com_gpt(url_alvo, nome_input)
-    
-    if info_ia and info_ia["preco"] > 0:
-        nome_final = nome_input if nome_input else info_ia["nome"]
-        preco_concorrente = info_ia["preco"]
-        detalhes_final = info_ia["detalhes"]
-    else:
-        nome_final = nome_input if nome_input else "Produto em Monitoramento"
-        preco_concorrente = 0.0
-        detalhes_final = "Ficha descritiva temporariamente indisponível."
-        
-    seu_preco = float(seu_preco_input) if seu_preco_input else 0.0
-    score = calcular_score_arbitragem(seu_preco, preco_concorrente)
-    
-    return jsonify({
-        'nome': nome_final,
-        'valor_atual': f"R$ {seu_preco:.2f}",
-        'valor_concorrente': f"R$ {preco_concorrente:.2f}",
-        'score': score,
-        'detalhes': detalhes_final
-    })
+    dados = request.get_json()
+    url = dados.get('url')
+    seu_preco = dados.get('seu_preco', '0.00')
+    nome_opcional = dados.get('nome', '')
 
-@app.route('/perguntar-ia', methods=['POST'])
-def perguntar_ia():
-    dados = request.json
-    mensagem_usuario = dados.get('mensagem', '')
+    if not url:
+        return jsonify({"erro": True, "mensagem": "URL não fornecida"}), 400
+
     try:
-        resposta = cliente_openai.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": f"Você é o assistente do painel MonitoreX. Responda em português: {mensagem_usuario}"}],
-            max_tokens=150
-        )
-        return jsonify({'resposta': resposta.choices[0].message.content.strip()})
-    except Exception:
-        return jsonify({'resposta': "Motor de IA OpenAI totalmente operacional."})
+        # 1. Simula navegador para evitar o bloqueio 403 padrão
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8"
+        }
+        
+        resposta_site = requests.get(url, headers=headers, timeout=15)
+        
+        if resposta_site.status_code != 200:
+            return jsonify({
+                "erro": False,
+                "score": 0,
+                "nome": nome_opcional or "Erro de Acesso",
+                "detalhes": f"O site bloqueou o acesso direto do robô (Código: {resposta_site.status_code}).",
+                "valor_atual": seu_preco,
+                "valor_concorrente": "Não localizado"
+            })
 
-if __name__ == '__main__':
-    porta = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=porta, debug=True)
+        # 2. Limpa o conteúdo
+        conteudo_limpo = limpar_html_para_ia(resposta_site.text)
+
+        # 3. Chama o ChatGPT (modelo gpt-4o-mini para máxima economia)
+        prompt = f"""
+        Analise o texto estruturado de uma página de produto e capture o preço real de venda.
+        Ignore valores antigos riscados ou preços de parcelamento longo se houver valor à vista.
+        Se encontrar o nome do produto no texto, capture também.
+
+        Texto da página:
+        {conteudo_limpo}
+
+        Responda rigorosamente no formato JSON abaixo, sem marcações markdown como ```json ou textos adicionais:
+        {{
+            "nome": "Nome do produto",
+            "preco_alvo": 159.90,
+            "detalhes": "Condição ou observação sobre o preço"
+        }}
+        Se não encontrar nenhum preço viável, retorne 0 em preco_alvo.
+        """
+
+        resposta_ia = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "Você é um extrator de dados preciso que responde apenas em JSON puro."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.1
+        )
+
+        # 4. Trata o retorno do ChatGPT
+        texto_json = resposta_ia.choices[0].message.content.strip()
+        
+        import json
+        dados_ia = json.loads(texto_json)
+
+        preco_concorrente = dados_ia.get("preco_alvo", 0)
+        nome_produto = nome_opcional or dados_ia.get("nome", "Produto em Monitoramento")
+        detalhes = dados_ia.get("detalhes", "Extraído com sucesso via Inteligência Semântica.")
+
+        # 5. Cálculo básico de arbitragem para o Score
+        try:
+            v_seu = float(seu_preco)
+            v_conc = float(preco_concorrente)
+            score = int(((v_conc - v_seu) / v_conc) * 100) if v_conc > 0 else 0
+            score = max(0, min(100, score))
+        except:
+            score = 0
+
+        return jsonify({
+            "erro": False,
+            "score": score,
+            "nome": nome_produto,
+            "detalhes": detalhes,
+            "valor_atual": v_seu,
+            "valor_concorrente": v_concorrente
+        })
+
+    except Exception as e:
+        print(f"Erro: {str(e)}")
+        return jsonify({"erro": True, "mensagem": f"Erro interno: {str(e)}"}), 500
