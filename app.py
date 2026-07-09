@@ -69,26 +69,38 @@ def obter_html_concorrente(url):
 
 def limpar_html_para_ia(html_cru):
     """
-    Estratégia Avançada: Procura primeiro por dados estruturados (JSON-LD) 
-    que as plataformas de e-commerce usam para SEO. Se encontrar, entrega os dados
-    puros para a IA. Se não, limpa o HTML mantendo o texto máximo.
+    Estratégia Definitiva: Procura por Meta Tags (Open Graph), que ficam no cabeçalho
+    da página e são estáticas, blindadas contra truques de JavaScript, além do JSON-LD.
     """
     if not html_cru:
         return ""
         
     soup = BeautifulSoup(html_cru, 'html.parser')
+    info_extra = []
+
+    # 1. Busca nas Meta Tags (Ouro para e-commerce)
+    meta_tags_alvo = [
+        "og:title", "og:price:amount", "product:price:amount", 
+        "twitter:title", "og:description", "og:site_name"
+    ]
     
-    # 1. Tenta capturar os metadados ocultos do produto (JSON-LD)
-    dados_estruturados = []
+    for meta in soup.find_all("meta"):
+        prop = meta.get("property") or meta.get("name")
+        content = meta.get("content")
+        if prop in meta_tags_alvo and content:
+            info_extra.append(f"{prop}: {content.strip()}")
+
+    # 2. Tenta capturar também os metadados ocultos do produto (JSON-LD)
     for script in soup.find_all("script", type="application/ld+json"):
         if script.string:
-            dados_estruturados.append(script.string.strip())
+            info_extra.append(script.string.strip())
             
-    if dados_estruturados:
-        print("-> [SUCESSO] Dados estruturados JSON-LD encontrados na página!")
-        return "\n".join(dados_estruturados)[:15000]
+    # 3. Se achou meta tags ou JSON-LD, prioriza totalmente esses dados puros
+    if info_extra:
+        print("-> [SUCESSO] Metadados/Meta tags encontrados na página!")
+        return "\n".join(info_extra)[:15000]
 
-    # 2. Se não achar JSON-LD, limpa o lixo computacional e manda o esqueleto completo
+    # 4. Se não achar nada, limpa o lixo computacional e manda o esqueleto completo
     for elemento in soup(["script", "style", "noscript", "iframe", "svg", "header", "footer", "nav"]):
         elemento.decompose()
         
@@ -109,7 +121,7 @@ def extrair_preco_com_gemini(texto_pagina, seu_preco="0.00"):
         prompt = f"""
         Você é um robô analista de dados especialista em e-commerce.
         Sua missão é extrair o NOME do produto principal e o PREÇO atual de venda.
-        O texto fornecido pode ser um emaranhado de texto comum ou um objeto de metadados JSON (JSON-LD).
+        O texto fornecido pode ser um emaranhado de texto comum, metadados open graph ou um objeto JSON (JSON-LD).
         
         Texto/Dados da página do concorrente:
         \"\"\"{texto_pagina}\"\"\"
@@ -117,9 +129,10 @@ def extrair_preco_com_gemini(texto_pagina, seu_preco="0.00"):
         O preço do meu cliente para este mesmo produto é: R$ {seu_preco}
 
         REGRAS DE EXTRAÇÃO:
-        1. Se houver um bloco de JSON, procure pelas chaves "name", "title", "price", "priceCurrency" ou "offers".
-        2. Ignore produtos recomendados, foque apenas no item principal da página.
-        3. Retorne OBRIGATORIAMENTE apenas um objeto JSON válido (sem markdown, sem blocos de código ```json, sem texto explicativo adicional) com o seguinte formato exato:
+        1. Se houver chaves como "og:title" ou "name", extraia o título do produto dali.
+        2. Se houver "og:price:amount", "price" ou valores numéricos explícitos perto do produto principal, capture o valor de venda corrente.
+        3. Ignore produtos recomendados, foque apenas no item principal da página.
+        4. Retorne OBRIGATORIAMENTE apenas um objeto JSON válido (sem markdown, sem blocos de código ```json, sem texto explicativo adicional) com o seguinte formato exato:
         {{
             "produto_concorrente": "Nome do produto encontrado aqui",
             "preco_concorrente": 0.00,
