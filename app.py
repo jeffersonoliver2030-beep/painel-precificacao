@@ -4,9 +4,9 @@ import json
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import requests
-import cloudscraper
 from bs4 import BeautifulSoup
 import google.generativeai as genai  # Biblioteca oficial do Gemini
+import cloudscraper  # Burlador de bloqueios de e-commerce
 
 app = Flask(__name__)
 CORS(app)
@@ -34,17 +34,17 @@ def analisar_alvo():
     if not url:
         return jsonify({"erro": True, "mensagem": "URL não fornecida"}), 400
 
-   try:
-     # Cria um raspador avançado que pula proteções de e-commerce
-     scraper = cloudscraper.create_scraper()
-     resposta_site = scraper.get(url, timeout=15)
-
-     # LINHAS DE RASTREAMENTO (PRINT)
-     print("--- DEBUG RASPAGEM ---")
-     print(f"Status Code do Site: {resposta_site.status_code}")
-     print(f"Tamanho do HTML baixado: {len(resposta_site.text)} caracteres")
-     print(f"Começo do texto capturado: {resposta_site.text[:500]}")
-     print("----------------------")
+    try:
+        # 1. Cria um raspador avançado que pula proteções de e-commerce (Cloudflare)
+        scraper = cloudscraper.create_scraper()
+        resposta_site = scraper.get(url, timeout=15)
+        
+        # LINHAS DE RASTREAMENTO (PRINT)
+        print("--- DEBUG RASPAGEM ---")
+        print(f"Status Code do Site: {resposta_site.status_code}")
+        print(f"Tamanho do HTML baixado: {len(resposta_site.text)} caracteres")
+        print(f"Começo do texto capturado: {resposta_site.text[:500]}")
+        print("----------------------")
         
         if resposta_site.status_code != 200:
             return jsonify({
