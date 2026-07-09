@@ -69,46 +69,27 @@ def obter_html_concorrente(url):
 
 def limpar_html_para_ia(html_cru):
     """
-    Versão Otimizada: Foca estritamente no conteúdo principal do produto,
-    ignorando carrosséis de recomendação, links de rodapé e menus laterais
-    para evitar que a IA puxe nomes e preços de outros produtos vitrines.
+    Versão Segura: Remove apenas códigos pesados e elementos que não contêm texto,
+    preservando toda a estrutura de dados da página para que a IA não perca
+    o nome e o preço real do produto por cortes agressivos.
     """
     if not html_cru:
         return ""
         
     soup = BeautifulSoup(html_cru, 'html.parser')
     
-    # 1. Remove elementos globais que poluem a leitura do produto e trazem preços aleatórios
-    elementos_para_remover = [
-        "script", "style", "header", "footer", "nav", "noscript", "iframe",
-        "aside", ".related", ".products-carousel", ".recommended", "#sidebar",
-        ".menu", ".footer-v2", ".newsletter", ".cross-sell", ".upsell"
-    ]
+    # Remove apenas o que é código puramente computacional ou design fixo
+    for elemento in soup(["script", "style", "noscript", "iframe", "svg", "header", "footer"]):
+        elemento.decompose()
+        
+    # Extrai todo o texto restante da página de forma contínua
+    texto_limpo = soup.get_text(separator=' ')
     
-    for seletor in elementos_para_remover:
-        for elemento in soup.select(seletor) if seletor.startswith('.') or seletor.startswith('#') else soup([seletor]):
-            elemento.decompose()
-            
-    # 2. Tenta isolar apenas a área principal de conteúdo onde o produto REAL está descrito
-    conteudo_principal = None
-    for tag_principal in ['main', 'article', '#product', '.product-essential', '.product-single', '.product-view']:
-        encontrado = soup.select_one(tag_principal) if tag_principal.startswith('.') or tag_principal.startswith('#') else soup.find(tag_principal)
-        if encontrado:
-            conteudo_principal = encontrado
-            break
-            
-    # Se encontrou um container principal isolado, usa ele. Se não, usa o corpo todo limpo.
-    alvo_extracao = conteudo_principal if conteudo_principal else soup.body
-    
-    if not alvo_extracao:
-        alvo_extracao = soup
-
-    # 3. Extrai o texto visível de forma limpa e compacta
-    texto_limpo = alvo_extracao.get_text(separator=' ')
+    # Limpa espaços em branco e linhas vazias
     linhas = [linha.strip() for list_linha in texto_limpo.splitlines() for linha in [list_linha.strip()] if linha]
     
-    # Retorna o texto bem focado (limitado para economizar tokens na API)
-    return " ".join(linhas)[:12000]
+    # Junta tudo e envia um bloco robusto de dados para a IA (até 20.000 caracteres)
+    return " ".join(linhas)[:20000]
 
 
 def extrair_preco_com_gemini(texto_pagina, seu_preco="0.00"):
