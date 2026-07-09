@@ -14,7 +14,7 @@ CORS(app)
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 
 # Inicializa o modelo Gemini 1.5 Flash (Ultra rápido e econômico)
-model = genai.GenerativeModel('models/gemini-1.5-flash')
+model = genai.GenerativeModel(model_name='gemini-1.5-flash')
 
 def limpar_html_para_ia(html_puro):
     """Remove o excesso de código do site para economizar seus tokens no Gemini"""
