@@ -1,3 +1,28 @@
+import os
+import re
+import json
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import requests
+from bs4 import BeautifulSoup
+import google.generativeai as genai  # Biblioteca oficial do Gemini
+
+app = Flask(__name__)
+CORS(app)
+
+# Configura a chave do Gemini buscando de forma segura do ambiente
+genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+
+# Inicializa o modelo usando a nomenclatura estável atual
+model = genai.GenerativeModel('gemini-2.5-flash')
+
+def limpar_html_para_ia(html_puro):
+    """Remove o excesso de código do site para economizar seus tokens no Gemini"""
+    soup = BeautifulSoup(html_puro, 'html.parser')
+    for elemento in soup(["script", "style", "nav", "footer", "iframe", "header"]):
+        elemento.decompose()
+    return re.sub(r'\s+', ' ', soup.get_text())[:8000]
+
 @app.route('/analisar-alvo', methods=['POST'])
 def analisar_alvo():
     dados = request.get_json()
