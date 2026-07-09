@@ -69,62 +69,68 @@ def obter_html_concorrente(url):
 
 def limpar_html_para_ia(html_cru):
     """
-    Versão Segura: Remove apenas códigos pesados e elementos que não contêm texto,
-    preservando toda a estrutura de dados da página para que a IA não perca
-    o nome e o preço real do produto por cortes agressivos.
+    Estratégia Avançada: Procura primeiro por dados estruturados (JSON-LD) 
+    que as plataformas de e-commerce usam para SEO. Se encontrar, entrega os dados
+    puros para a IA. Se não, limpa o HTML mantendo o texto máximo.
     """
     if not html_cru:
         return ""
         
     soup = BeautifulSoup(html_cru, 'html.parser')
     
-    # Remove apenas o que é código puramente computacional ou design fixo
-    for elemento in soup(["script", "style", "noscript", "iframe", "svg", "header", "footer"]):
+    # 1. Tenta capturar os metadados ocultos do produto (JSON-LD)
+    dados_estruturados = []
+    for script in soup.find_all("script", type="application/ld+json"):
+        if script.string:
+            dados_estruturados.append(script.string.strip())
+            
+    if dados_estruturados:
+        print("-> [SUCESSO] Dados estruturados JSON-LD encontrados na página!")
+        return "\n".join(dados_estruturados)[:15000]
+
+    # 2. Se não achar JSON-LD, limpa o lixo computacional e manda o esqueleto completo
+    for elemento in soup(["script", "style", "noscript", "iframe", "svg", "header", "footer", "nav"]):
         elemento.decompose()
         
-    # Extrai todo o texto restante da página de forma contínua
     texto_limpo = soup.get_text(separator=' ')
-    
-    # Limpa espaços em branco e linhas vazias
     linhas = [linha.strip() for list_linha in texto_limpo.splitlines() for linha in [list_linha.strip()] if linha]
     
-    # Junta tudo e envia um bloco robusto de dados para a IA (até 20.000 caracteres)
     return " ".join(linhas)[:20000]
 
 
 def extrair_preco_com_gemini(texto_pagina, seu_preco="0.00"):
     """
-    Envia o texto limpo do e-commerce para o Gemini analisar de forma semântica
-    e retornar o preço exato estruturado em JSON.
+    Instrui o Gemini a analisar semanticamente os dados crus ou estruturados,
+    garantindo a captura mesmo que os dados estejam em formato JSON nativo do site.
     """
     try:
         model = genai.GenerativeModel('gemini-2.5-flash')
         
         prompt = f"""
-        Você é um robô especialista em inteligência de mercado e e-commerce.
-        Analise o texto extraído de uma página de produto concorrente e encontre:
-        1. O nome exato do produto principal em destaque na página.
-        2. O preço real e atual de venda (Ignore parcelamentos de longo prazo e foque no valor à vista destacado ou no PIX se houver).
+        Você é um robô analista de dados especialista em e-commerce.
+        Sua missão é extrair o NOME do produto principal e o PREÇO atual de venda.
+        O texto fornecido pode ser um emaranhado de texto comum ou um objeto de metadados JSON (JSON-LD).
         
-        Texto da página do concorrente:
+        Texto/Dados da página do concorrente:
         \"\"\"{texto_pagina}\"\"\"
         
         O preço do meu cliente para este mesmo produto é: R$ {seu_preco}
 
-        Retorne OBRIGATORIAMENTE apenas um objeto JSON válido (sem markdown, sem blocos de código ```json, sem texto explicativo adicional) com o seguinte formato exato:
+        REGRAS DE EXTRAÇÃO:
+        1. Se houver um bloco de JSON, procure pelas chaves "name", "title", "price", "priceCurrency" ou "offers".
+        2. Ignore produtos recomendados, foque apenas no item principal da página.
+        3. Retorne OBRIGATORIAMENTE apenas um objeto JSON válido (sem markdown, sem blocos de código ```json, sem texto explicativo adicional) com o seguinte formato exato:
         {{
             "produto_concorrente": "Nome do produto encontrado aqui",
             "preco_concorrente": 0.00,
             "meu_preco": {seu_preco},
             "status_analise": "sucesso"
         }}
-        Se você não conseguir identificar o produto ou o preço no texto fornecido, retorne o JSON com a estrutura idêntica, mas defina o "preco_concorrente" como 0.00 e o "status_analise" como "nao_encontrado".
         """
         
         resposta_ia = model.generate_content(prompt)
         texto_resposta = resposta_ia.text.strip()
         
-        # Remove marcas de formatação de código de markdown que a IA às vezes adiciona
         if texto_resposta.startswith("```"):
             texto_resposta = texto_resposta.replace("```json", "").replace("```", "").strip()
             
@@ -133,11 +139,12 @@ def extrair_preco_com_gemini(texto_pagina, seu_preco="0.00"):
     except Exception as e:
         print(f"Erro ao processar dados no Gemini: {str(e)}")
         return {
-            "produto_concorrente": "Erro na análise da IA",
+            "produto_concorrente": "Erro na análise de metadados",
             "preco_concorrente": 0.00,
             "meu_preco": seu_preco,
             "status_analise": "erro"
         }
+    
 
 # ==========================================
 # ROTAS DA API (CONEXÃO COM O LOVABLE)
