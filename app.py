@@ -69,24 +69,46 @@ def obter_html_concorrente(url):
 
 def limpar_html_para_ia(html_cru):
     """
-    Remove tags de scripts, estilos e cabeçalhos inúteis do HTML do concorrente,
-    deixando apenas o texto puro para economizar tráfego na API do Gemini.
+    Versão Otimizada: Foca estritamente no conteúdo principal do produto,
+    ignorando carrosséis de recomendação, links de rodapé e menus laterais
+    para evitar que a IA puxe nomes e preços de outros produtos vitrines.
     """
     if not html_cru:
         return ""
         
     soup = BeautifulSoup(html_cru, 'html.parser')
     
-    # Remove elementos que poluem e deixam o texto pesado
-    for elemento in soup(["script", "style", "header", "footer", "nav", "noscript", "iframe"]):
-        elemento.decompose()
-        
-    # Pega apenas as strings de texto visíveis, limpando os espaços extras
-    texto_limpo = soup.get_text(separator=' ')
+    # 1. Remove elementos globais que poluem a leitura do produto e trazem preços aleatórios
+    elementos_para_remover = [
+        "script", "style", "header", "footer", "nav", "noscript", "iframe",
+        "aside", ".related", ".products-carousel", ".recommended", "#sidebar",
+        ".menu", ".footer-v2", ".newsletter", ".cross-sell", ".upsell"
+    ]
+    
+    for seletor in elementos_para_remover:
+        for elemento in soup.select(seletor) if seletor.startswith('.') or seletor.startswith('#') else soup([seletor]):
+            elemento.decompose()
+            
+    # 2. Tenta isolar apenas a área principal de conteúdo onde o produto REAL está descrito
+    conteudo_principal = None
+    for tag_principal in ['main', 'article', '#product', '.product-essential', '.product-single', '.product-view']:
+        encontrado = soup.select_one(tag_principal) if tag_principal.startswith('.') or tag_principal.startswith('#') else soup.find(tag_principal)
+        if encontrado:
+            conteudo_principal = encontrado
+            break
+            
+    # Se encontrou um container principal isolado, usa ele. Se não, usa o corpo todo limpo.
+    alvo_extracao = conteudo_principal if conteudo_principal else soup.body
+    
+    if not alvo_extracao:
+        alvo_extracao = soup
+
+    # 3. Extrai o texto visível de forma limpa e compacta
+    texto_limpo = alvo_extracao.get_text(separator=' ')
     linhas = [linha.strip() for list_linha in texto_limpo.splitlines() for linha in [list_linha.strip()] if linha]
     
-    # Junta tudo em um bloco de texto compacto e leve (Limitado para segurança)
-    return " ".join(linhas)[:15000]
+    # Retorna o texto bem focado (limitado para economizar tokens na API)
+    return " ".join(linhas)[:12000]
 
 
 def extrair_preco_com_gemini(texto_pagina, seu_preco="0.00"):
@@ -100,8 +122,8 @@ def extrair_preco_com_gemini(texto_pagina, seu_preco="0.00"):
         prompt = f"""
         Você é um robô especialista em inteligência de mercado e e-commerce.
         Analise o texto extraído de uma página de produto concorrente e encontre:
-        1. O nome exato do produto.
-        2. O preço real e atual de venda (desconsidere parcelamentos, foque no valor à vista ou principal destacado).
+        1. O nome exato do produto principal em destaque na página.
+        2. O preço real e atual de venda (Ignore parcelamentos de longo prazo e foque no valor à vista destacado ou no PIX se houver).
         
         Texto da página do concorrente:
         \"\"\"{texto_pagina}\"\"\"
@@ -170,7 +192,7 @@ def analisar_produto():
             "status_analise": "erro_conexao"
         }), 200
 
-    # 2. Faz a limpeza pesada do HTML
+    # 2. Faz a limpeza pesada do HTML (Versão Otimizada)
     conteudo_filtrado = limpar_html_para_ia(html_cru)
 
     # 3. Passa o texto para o cérebro da Inteligência Artificial extrair o valor
