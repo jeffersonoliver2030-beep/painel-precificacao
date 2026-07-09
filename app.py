@@ -212,8 +212,20 @@ def analisar_texto_extensao():
     if not conteudo_limpo:
         return jsonify({"erro": "Nenhum texto enviado pela extensão."}), 400
 
-    resultado_final = extrair_preco_com_gemini(conteudo_limpo, seu_preco)
-    return jsonify(resultado_final)
+    # Executa a análise do Gemini
+    resultado_ia = extrair_preco_com_gemini(conteudo_limpo, seu_preco)
+    
+    # Criamos o formato exato que o Lovable espera ler (com title e price)
+    resultado_formatado = {
+        "title": resultado_ia.get("produto_concorrente", "Produto sem nome"),
+        "price": resultado_ia.get("preco_concorrente", 0.00),
+        "produto_concorrente": resultado_ia.get("produto_concorrente", "Produto sem nome"),
+        "preco_concorrente": resultado_ia.get("preco_concorrente", 0.00),
+        "meu_preco": resultado_ia.get("meu_preco", seu_preco),
+        "status_analise": resultado_ia.get("status_analise", "sucesso")
+    }
+    
+    return jsonify(resultado_formatado)
 
 
 # ==========================================
