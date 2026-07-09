@@ -202,17 +202,18 @@ def analisar_produto():
     return jsonify(resultado_final)
 
 
-# Rota planejada para o plano Premium/Diamante via Extensão de Navegador
-@app.route('/analisar-texto-extensao', methods=['POST'])
-def analisar_texto_extensao():
-    dados = request.get_json() or {}
-    conteudo_limpo = dados.get('conteudo_limpo')
-    seu_preco = dados.get('seu_preco', '0.00')
+## 1. Antes de mandar para a IA, verifica se o robô realmente trouxe conteúdo
+    if not conteudo_limpo or len(conteudo_limpo.strip()) < 50:
+        return jsonify({
+            "title": "Erro: Link bloqueado ou inacessível",
+            "price": 0.00,
+            "produto_concorrente": "Não foi possível ler o site",
+            "preco_concorrente": 0.00,
+            "meu_preco": seu_preco,
+            "status_analise": "erro"
+        })
 
-    if not conteudo_limpo:
-        return jsonify({"erro": "Nenhum texto enviado pela extensão."}), 400
-
-    # Executa a análise do Gemini
+    # 2. Se passou da trava, aí sim executa a análise do Gemini
     resultado_ia = extrair_preco_com_gemini(conteudo_limpo, seu_preco)
     
     # Criamos o formato exato que o Lovable espera ler (com title e price)
