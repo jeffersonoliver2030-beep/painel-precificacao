@@ -2,5 +2,5 @@ Flask==3.0.2
 Flask-CORS==4.0.0
 requests
 beautifulsoup4
-google-generativeai>=0.10.0
+google-generativeai==0.8.8
 gunicorn
