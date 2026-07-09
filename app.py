@@ -42,6 +42,25 @@ def analisar_alvo():
         
         resposta_site = requests.get(url, headers=headers, timeout=15)
         
+        # LINHAS DE RASTREAMENTO (PRINT ALINHADAS):
+        print(f"--- DEBUG RASPAGEM ---")
+        print(f"Status Code do Site: {resposta_site.status_code}")
+        print(f"Tamanho do HTML baixado: {len(resposta_site.text)} caracteres")
+        print(f"Começo do texto capturado: {resposta_site.text[:500]}")
+        print(f"----------------------")
+
+    if not url:
+        return jsonify({"erro": True, "mensagem": "URL não fornecida"}), 400
+
+    try:
+        # 1. Simula um navegador real para evitar bloqueios de raspagem
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8"
+        }
+        
+        resposta_site = requests.get(url, headers=headers, timeout=15)
+        
         if resposta_site.status_code != 200:
             return jsonify({
                 "erro": False,
