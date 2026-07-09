@@ -209,4 +209,4 @@ def analisar_texto_extensao():
 if __name__ == '__main__':
     # Obtém a porta padrão do ambiente (necessário para rodar na Render)
     porta = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=porta, debug=False
+    app.run(host='0.0.0.0', port=porta, debug=False)
