@@ -70,15 +70,18 @@ def obter_html_concorrente(url):
 
 def limpar_html_para_ia(html_cru):
     """
-    Estratégia: procura primeiro pelas Meta Tags (Open Graph), que ficam no
-    cabeçalho da página e são estáticas, e pelos dados estruturados JSON-LD.
-    Se não encontrar nada, cai para o texto visível da página como reserva.
+    Estratégia: procura primeiro pelas Meta Tags (Open Graph), tag de título principal,
+    e pelos dados estruturados JSON-LD.
     """
     if not html_cru:
         return ""
 
     soup = BeautifulSoup(html_cru, 'html.parser')
     info_extra = []
+
+    # O SEGREDO AQUI: Sempre captura o título real da página se ele existir
+    if soup.title and soup.title.string:
+        info_extra.append(f"titulo_pagina_principal: {soup.title.string.strip()}")
 
     # 1. Busca nas Meta Tags (Ouro para e-commerce)
     meta_tags_alvo = [
