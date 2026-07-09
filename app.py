@@ -42,7 +42,7 @@ def obter_html_concorrente(url):
             "https": proxy_url
         }
 
-        # Fingindo ser un navegador comum de computador
+        # Fingindo ser um navegador comum de computador
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
             "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8"
@@ -79,7 +79,7 @@ def limpar_html_para_ia(html_cru):
     soup = BeautifulSoup(html_cru, 'html.parser')
     info_extra = []
 
-    # O SEGREDO AQUI: Sempre captura o título real da página se ele existir
+    # Sempre captura o título real da página se ele existir
     if soup.title and soup.title.string:
         info_extra.append(f"titulo_pagina_principal: {soup.title.string.strip()}")
 
@@ -133,16 +133,16 @@ def extrair_preco_com_gemini(texto_pagina, seu_preco="0.00"):
 
         O preço do meu cliente para este mesmo produto é: R$ {seu_preco}
 
-        REGRAS DE EXTRAÇÃO:
-        1. Se houver chaves como "og:title" ou "name", extraia o título do produto dali.
-        2. Se houver "og:price:amount", "price" ou valores numéricos explícitos perto do produto principal, capture o valor de venda corrente.
-        3. Ignore produtos recomendados, foque apenas no item principal da página.
-        4. Retorne OBRIGATORIAMENTE apenas um objeto JSON válido (sem markdown, sem blocos de código ```json, sem texto explicativo adicional) com o seguinte formato exato:
+        REGRAS DE EXTRAÇÃO CRÍTICAS:
+        1. Se o texto fornecido parecer uma página de bloqueio (Cloudflare, "Access Denied", "Robô", "Captcha", "Security Check") ou não contiver dados claros de um produto, retorne "status_analise": "erro" e preco_concorrente: 0.00.
+        2. NÃO INVENTE VALORES. Se não encontrar o preço real do produto concorrente de forma explícita no texto, retorne preco_concorrente: 0.00 e "status_analise": "erro".
+        3. Se encontrar o produto real, extraia o título da chave "og:title", tag de título ou "name".
+        4. Retorne OBRIGATORIAMENTE apenas o objeto JSON válido no formato exato:
         {{
-            "produto_concorrente": "Nome do produto encontrado aqui",
+            "produto_concorrente": "Nome real encontrado ou 'Erro: Produto não encontrado'",
             "preco_concorrente": 0.00,
             "meu_preco": {seu_preco},
-            "status_analise": "sucesso"
+            "status_analise": "sucesso ou erro"
         }}
         """
 
@@ -223,6 +223,17 @@ def analisar_texto_extensao():
     # 4. Passa o texto limpo para o Gemini extrair nome e preço
     resultado_ia = extrair_preco_com_gemini(conteudo_filtrado, seu_preco)
 
+    # NOVO: Se a IA detectou que o site foi bloqueado ou não achou o produto
+    if resultado_ia.get("status_analise") == "erro" or resultado_ia.get("preco_concorrente") == 0.00:
+        return jsonify({
+            "title": "Erro: Link bloqueado ou produto inacessível",
+            "price": 0.00,
+            "produto_concorrente": "Não foi possível extrair os dados reais deste site",
+            "preco_concorrente": 0.00,
+            "meu_preco": seu_preco,
+            "status_analise": "erro"
+        }), 200
+
     # 5. Formata a resposta final garantindo as chaves "title" e "price" exigidas pelo Lovable
     resultado_formatado = {
         "title": resultado_ia.get("produto_concorrente", "Produto sem nome"),
@@ -230,7 +241,7 @@ def analisar_texto_extensao():
         "produto_concorrente": resultado_ia.get("produto_concorrente", "Produto sem nome"),
         "preco_concorrente": resultado_ia.get("preco_concorrente", 0.00),
         "meu_preco": resultado_ia.get("meu_preco", seu_preco),
-        "status_analise": resultado_ia.get("status_analise", "sucesso")
+        "status_analise": "sucesso"
     }
 
     return jsonify(resultado_formatado)
